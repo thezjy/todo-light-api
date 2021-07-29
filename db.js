@@ -3,5 +3,5 @@ const pgInit = require('pg-promise')
 const pgp = pgInit()
 
 module.exports = {
-  db: pgp(process.env.DATABASE_CONNECTION_STRING),
+  db: pgp(process.env.DATABASE_URL),
 }
