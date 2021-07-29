@@ -2,7 +2,15 @@ require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
 const helmet = require('helmet')
+const { execSync } = require('child_process')
+const fs = require('fs')
 const router = require('./router')
+
+const COCKROACH_CERT_PATH = '/data/close-bison-ca.crt'
+
+if (process.env.FLY_APP_NAME != null) {
+  downloadCockroachCert()
+}
 
 const { PORT } = process.env
 
@@ -17,3 +25,13 @@ app.use(router)
 app.listen(PORT, () => {
   console.log(`Listening on port ${PORT}`)
 })
+
+function downloadCockroachCert() {
+  if (!fs.existsSync(COCKROACH_CERT_PATH)) {
+    console.log('try download cockroach cert')
+    execSync(
+      `curl --create-dirs -o ${COCKROACH_CERT_PATH} -O https://cockroachlabs.cloud/clusters/a0d63d14-0733-4ebe-9a7d-361d540a4db2/cert`,
+    )
+    console.log('download cockroach cert successful')
+  }
+}

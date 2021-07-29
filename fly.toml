@@ -8,6 +8,10 @@ kill_timeout = 5
 [build]
   builder = "heroku/buildpacks:20"
 
+[mounts]
+  source="data"
+  destination="/data"
+
 [env]
   PORT = "8080"
 
