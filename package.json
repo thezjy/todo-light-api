@@ -1,0 +1,23 @@
+{
+  "name": "grape",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "dev": "nodemon"
+  },
+  "dependencies": {
+    "ably": "^1.2.11",
+    "cors": "^2.8.5",
+    "dotenv": "^10.0.0",
+    "express": "4",
+    "express-promise-router": "^4.1.0",
+    "helmet": "^4.6.0",
+    "pg": "^8.7.1",
+    "pg-promise": "^10.10.2"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.12",
+    "prettier": "^2.3.2"
+  }
+}
