@@ -21,7 +21,10 @@ const app = express()
 app.use(morgan('combined'))
 app.use(express.json())
 app.use(express.urlencoded())
-app.use(cors())
+
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Max-Age
+app.use(cors({ maxAge: 86400 }))
+
 app.use(helmet())
 app.use(router)
 
