@@ -13,6 +13,7 @@
     "express": "4",
     "express-promise-router": "^4.1.0",
     "helmet": "^4.6.0",
+    "morgan": "^1.10.0",
     "pg": "^8.7.1",
     "pg-promise": "^10.10.2"
   },

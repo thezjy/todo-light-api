@@ -4,6 +4,8 @@ const cors = require('cors')
 const helmet = require('helmet')
 const { execSync } = require('child_process')
 const fs = require('fs')
+const morgan = require('morgan')
+
 const router = require('./router')
 
 const COCKROACH_CERT_PATH = '/data/close-bison-ca.crt'
@@ -16,6 +18,7 @@ const { PORT } = process.env
 
 const app = express()
 
+app.use(morgan('combined'))
 app.use(express.json())
 app.use(express.urlencoded())
 app.use(cors())
