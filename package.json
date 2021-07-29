@@ -1,0 +1,27 @@
+{
+  "name": "todo-light-api",
+  "version": "1.0.0",
+  "main": "server.js",
+  "license": "MIT",
+  "scripts": {
+    "dev": "nodemon",
+    "migrate": "node-pg-migrate"
+  },
+  "dependencies": {
+    "ably": "^1.2.11",
+    "cors": "^2.8.5",
+    "dotenv": "^10.0.0",
+    "express": "4",
+    "express-promise-router": "^4.1.0",
+    "express-rate-limit": "^5.3.0",
+    "helmet": "^4.6.0",
+    "morgan": "^1.10.0",
+    "node-pg-migrate": "^5.10.0",
+    "pg": "^8.7.1",
+    "pg-promise": "^10.10.2"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.12",
+    "prettier": "^2.3.2"
+  }
+}
