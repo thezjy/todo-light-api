@@ -21,17 +21,17 @@ router.post('/replicache-pull', async (req, res) => {
     await db.tx(async (t) => {
       const lastMutationID = parseInt(
         (
-          await db.oneOrNone(
+          await t.oneOrNone(
             'select last_mutation_id from replicache_client where id = $1',
             pull.clientID,
           )
         )?.last_mutation_id ?? '0',
       )
-      const changed = await db.manyOrNone(
+      const changed = await t.manyOrNone(
         'select id, completed, content, ord, deleted from todo where version > $1',
         parseInt(pull.cookie ?? 0),
       )
-      const cookie = (await db.one('select max(version) as version from todo'))
+      const cookie = (await t.one('select max(version) as version from todo'))
         .version
 
       console.log({ cookie, lastMutationID, changed })
