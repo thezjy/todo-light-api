@@ -18,7 +18,7 @@ router.post('/replicache-pull', async (req, res) => {
   console.log(`Processing pull`, JSON.stringify(pull))
   const t0 = Date.now()
   try {
-    await db.task(async (t) => {
+    await db.tx(async (t) => {
       const lastMutationID = parseInt(
         (
           await t.oneOrNone(
