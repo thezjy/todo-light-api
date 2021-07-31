@@ -79,7 +79,7 @@ router.post('/replicache-push', async (req, res) => {
   console.log('Processing push', JSON.stringify(push))
   const t0 = Date.now()
   try {
-    await db.tx(async (t) => {
+    await db.task(async (t) => {
       let lastMutationID = await getLastMutationID(t, push.clientID)
 
       for (const mutation of push.mutations) {
