@@ -9,6 +9,9 @@ kill_timeout = 5
   builder = "paketobuildpacks/builder:base"
   buildpacks = ["gcr.io/paketo-buildpacks/nodejs"]
 
+[deploy]
+  release_command = "yarn migrate up"
+
 [mounts]
   source="data"
   destination="/data"

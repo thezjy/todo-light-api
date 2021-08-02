@@ -1,7 +1,7 @@
 const Router = require('express-promise-router')
 const Ably = require('ably')
 const ably = new Ably.Realtime(process.env.ABLY_AKY_KEY)
-const todoChannel = ably.channels.get('todo')
+const todoChannel = ably.channels.get('todo-change')
 
 const { db } = require('./db')
 
@@ -15,6 +15,7 @@ router.get('/', async (req, res) => {
 
 router.post('/replicache-pull', async (req, res) => {
   const pull = req.body
+  const { group_id: groupID } = req.query
   console.log(`Processing pull`, JSON.stringify(pull))
   const t0 = Date.now()
   try {
@@ -22,17 +23,21 @@ router.post('/replicache-pull', async (req, res) => {
       const lastMutationID = parseInt(
         (
           await t.oneOrNone(
-            'select last_mutation_id from replicache_client where id = $1',
+            'select last_mutation_id from replicache_clients where id = $1',
             pull.clientID,
           )
         )?.last_mutation_id ?? '0',
       )
       const changed = await t.manyOrNone(
-        'select id, completed, content, ord, deleted from todo where version > $1',
-        parseInt(pull.cookie ?? 0),
+        'select id, completed, content, ord, deleted from todos where group_id = $2 and version > $1',
+        [parseInt(pull.cookie ?? 0), groupID],
       )
-      const cookie = (await t.one('select max(version) as version from todo'))
-        .version
+      const cookie = (
+        await t.one(
+          'select max(version) as version from todos where group_id = $1',
+          groupID,
+        )
+      ).version
 
       console.log({ cookie, lastMutationID, changed })
 
@@ -75,6 +80,7 @@ router.post('/replicache-pull', async (req, res) => {
 })
 
 router.post('/replicache-push', async (req, res) => {
+  const { group_id: groupID } = req.query
   const push = req.body
   console.log('Processing push', JSON.stringify(push))
   const t0 = Date.now()
@@ -104,7 +110,7 @@ router.post('/replicache-push', async (req, res) => {
         console.log('Processing mutation:', JSON.stringify(mutation))
         switch (mutation.name) {
           case 'createTodo':
-            await createTodo(t, mutation.args, version)
+            await createTodo(t, mutation.args, version, groupID)
             break
           case 'updateTodoCompleted':
             await updateTodoCompleted(t, mutation.args, version)
@@ -122,7 +128,7 @@ router.post('/replicache-push', async (req, res) => {
         console.log('Processed mutation in', Date.now() - t1)
       }
 
-      await sendPoke()
+      await sendPoke(groupID)
 
       console.log(
         'setting',
@@ -132,7 +138,7 @@ router.post('/replicache-push', async (req, res) => {
       )
 
       await t.none(
-        'UPDATE replicache_client SET last_mutation_id = $2 WHERE id = $1',
+        'UPDATE replicache_clients SET last_mutation_id = $2 WHERE id = $1',
         [push.clientID, lastMutationID],
       )
 
@@ -148,7 +154,7 @@ router.post('/replicache-push', async (req, res) => {
 
 async function getLastMutationID(t, clientID) {
   const clientRow = await t.oneOrNone(
-    'SELECT last_mutation_id FROM replicache_client WHERE id = $1',
+    'SELECT last_mutation_id FROM replicache_clients WHERE id = $1',
     clientID,
   )
   if (clientRow) {
@@ -156,24 +162,29 @@ async function getLastMutationID(t, clientID) {
   }
   console.log('Creating new client', clientID)
   await t.none(
-    'INSERT INTO replicache_client (id, last_mutation_id) VALUES ($1, 0)',
+    'INSERT INTO replicache_clients (id, last_mutation_id) VALUES ($1, 0)',
     clientID,
   )
   return 0
 }
 
-async function createTodo(t, { id, completed, content, order }, version) {
+async function createTodo(
+  t,
+  { id, completed, content, order },
+  version,
+  groupID,
+) {
   await t.none(
-    `INSERT INTO todo (
-     id, completed, content, ord, version) values
-     ($1, $2, $3, $4, $5)`,
-    [id, completed, content, order, version],
+    `INSERT INTO todos (
+     id, completed, content, ord, version, group_id) values
+     ($1, $2, $3, $4, $5, $6)`,
+    [id, completed, content, order, version, groupID],
   )
 }
 
 async function updateTodoCompleted(t, { id, completed }, version) {
   await t.none(
-    `UPDATE todo
+    `UPDATE todos
      SET completed = $2, version = $3
      WHERE id = $1
      `,
@@ -183,7 +194,7 @@ async function updateTodoCompleted(t, { id, completed }, version) {
 
 async function updateTodoOrder(t, { id, order }, version) {
   await t.none(
-    `UPDATE todo
+    `UPDATE todos
      SET ord = $2, version = $3
      WHERE id = $1
      `,
@@ -194,7 +205,7 @@ async function updateTodoOrder(t, { id, order }, version) {
 async function deleteTodo(t, { id }, version) {
   console.info('deleteTodo, id: ', id)
   await t.none(
-    `UPDATE todo
+    `UPDATE todos
      SET (deleted, version) =
      (true, $2)
      WHERE id = $1
@@ -203,6 +214,6 @@ async function deleteTodo(t, { id }, version) {
   )
 }
 
-async function sendPoke() {
-  todoChannel.publish('change', {})
+async function sendPoke(groupID) {
+  todoChannel.publish(groupID, {})
 }

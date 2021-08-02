@@ -10,7 +10,9 @@ const router = require('./router')
 
 const COCKROACH_CERT_PATH = '/data/close-bison-ca.crt'
 
-if (process.env.FLY_APP_NAME != null) {
+const isProduction = process.env.FLY_APP_NAME != null
+
+if (isProduction) {
   downloadCockroachCert()
 }
 
@@ -18,7 +20,7 @@ const { PORT } = process.env
 
 const app = express()
 
-app.use(morgan('combined'))
+app.use(morgan(isProduction ? 'combined' : 'dev'))
 app.use(express.json())
 app.use(express.urlencoded())
 

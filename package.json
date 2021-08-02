@@ -4,7 +4,8 @@
   "main": "server.js",
   "license": "MIT",
   "scripts": {
-    "dev": "nodemon"
+    "dev": "nodemon",
+    "migrate": "node-pg-migrate"
   },
   "dependencies": {
     "ably": "^1.2.11",
@@ -14,6 +15,7 @@
     "express-promise-router": "^4.1.0",
     "helmet": "^4.6.0",
     "morgan": "^1.10.0",
+    "node-pg-migrate": "^5.10.0",
     "pg": "^8.7.1",
     "pg-promise": "^10.10.2"
   },
