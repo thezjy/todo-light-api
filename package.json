@@ -1,5 +1,5 @@
 {
-  "name": "grape",
+  "name": "todo-light-api",
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
