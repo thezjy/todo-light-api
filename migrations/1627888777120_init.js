@@ -3,8 +3,6 @@
 exports.shorthands = undefined
 
 exports.up = (pgm) => {
-  pgm.createSequence('todo_version')
-
   pgm.createTable('todos', {
     id: {
       type: 'varchar(21)',
@@ -33,17 +31,15 @@ exports.up = (pgm) => {
       notNull: true,
     },
     version: {
-      type: 'int8',
+      type: 'uuid',
       notNull: true,
+      default: pgm.func('gen_random_uuid()'),
     },
   })
 
-  pgm.createIndex('todos', ['group_id'])
-  pgm.createIndex('todos', ['id', 'group_id'])
-
   pgm.createTable('replicache_clients', {
     id: {
-      type: 'varchar(36)',
+      type: 'uuid',
       notNull: true,
       primaryKey: true,
     },
@@ -55,7 +51,6 @@ exports.up = (pgm) => {
 }
 
 exports.down = (pgm) => {
-  pgm.dropSequence('todo_version')
   pgm.dropTable('todos')
   pgm.dropTable('replicache_clients')
 }

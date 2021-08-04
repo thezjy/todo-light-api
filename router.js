@@ -18,6 +18,7 @@ router.post('/replicache-pull', async (req, res) => {
   const { group_id: groupID } = req.query
   console.log(`Processing pull`, JSON.stringify(pull))
   const t0 = Date.now()
+
   try {
     await db.tx(async (t) => {
       const lastMutationID = parseInt(
@@ -28,46 +29,46 @@ router.post('/replicache-pull', async (req, res) => {
           )
         )?.last_mutation_id ?? '0',
       )
-      const changed = await t.manyOrNone(
-        'select id, completed, content, ord, deleted from todos where group_id = $2 and version > $1',
-        [parseInt(pull.cookie ?? 0), groupID],
-      )
-      const cookie = (
-        await t.one(
-          'select max(version) as version from todos where group_id = $1',
-          groupID,
-        )
-      ).version
 
-      console.log({ cookie, lastMutationID, changed })
+      const changed = await t.manyOrNone(
+        'select id, completed, content, ord, deleted, version from todos where group_id = $1',
+        [groupID],
+      )
 
       const patch = []
 
-      if (pull.cookie === null) {
+      const cookie = {}
+
+      if (pull.cookie == null) {
         patch.push({ op: 'clear' })
       }
 
-      changed.forEach(({ id, completed, ord, content, deleted }) => {
+      changed.forEach(({ id, completed, content, ord, version, deleted }) => {
+        cookie[id] = version
+
         const key = `todo/${id}`
 
-        if (deleted) {
-          patch.push({
-            op: 'del',
-            key,
-          })
-        } else {
-          patch.push({
-            op: 'put',
-            key,
-            value: {
-              id,
-              completed,
-              content,
-              order: ord,
-            },
-          })
+        if (pull.cookie == null || pull.cookie[id] !== version) {
+          if (deleted) {
+            patch.push({
+              op: 'del',
+              key,
+            })
+          } else {
+            patch.push({
+              op: 'put',
+              key,
+              value: {
+                id,
+                completed,
+                content,
+                order: ord,
+              },
+            })
+          }
         }
       })
+
       res.json({ lastMutationID, cookie, patch })
       res.end()
     })
@@ -84,6 +85,7 @@ router.post('/replicache-push', async (req, res) => {
   const push = req.body
   console.log('Processing push', JSON.stringify(push))
   const t0 = Date.now()
+
   try {
     await db.tx(async (t) => {
       let lastMutationID = await getLastMutationID(t, push.clientID)
@@ -104,22 +106,20 @@ router.post('/replicache-push', async (req, res) => {
           break
         }
 
-        const { nextval: version } = await t.one(
-          "SELECT nextval('todo_version')",
-        )
         console.log('Processing mutation:', JSON.stringify(mutation))
+
         switch (mutation.name) {
           case 'createTodo':
-            await createTodo(t, mutation.args, version, groupID)
+            await createTodo(t, mutation.args, groupID)
             break
           case 'updateTodoCompleted':
-            await updateTodoCompleted(t, mutation.args, version)
+            await updateTodoCompleted(t, mutation.args)
             break
           case 'updateTodoOrder':
-            await updateTodoOrder(t, mutation.args, version)
+            await updateTodoOrder(t, mutation.args)
             break
           case 'deleteTodo':
-            await deleteTodo(t, mutation.args, version)
+            await deleteTodo(t, mutation.args)
             break
           default:
             throw new Error(`Unknown mutation: ${mutation.name}`)
@@ -168,49 +168,42 @@ async function getLastMutationID(t, clientID) {
   return 0
 }
 
-async function createTodo(
-  t,
-  { id, completed, content, order },
-  version,
-  groupID,
-) {
+async function createTodo(t, { id, completed, content, order }, groupID) {
   await t.none(
     `INSERT INTO todos (
-     id, completed, content, ord, version, group_id) values
-     ($1, $2, $3, $4, $5, $6)`,
-    [id, completed, content, order, version, groupID],
+     id, completed, content, ord, group_id) values
+     ($1, $2, $3, $4, $5)`,
+    [id, completed, content, order, groupID],
   )
 }
 
-async function updateTodoCompleted(t, { id, completed }, version) {
+async function updateTodoCompleted(t, { id, completed }) {
   await t.none(
     `UPDATE todos
-     SET completed = $2, version = $3
+     SET completed = $2, version = gen_random_uuid()
      WHERE id = $1
      `,
-    [id, completed, version],
+    [id, completed],
   )
 }
 
-async function updateTodoOrder(t, { id, order }, version) {
+async function updateTodoOrder(t, { id, order }) {
   await t.none(
     `UPDATE todos
-     SET ord = $2, version = $3
+     SET ord = $2, version = gen_random_uuid()
      WHERE id = $1
      `,
-    [id, order, version],
+    [id, order],
   )
 }
 
-async function deleteTodo(t, { id }, version) {
-  console.info('deleteTodo, id: ', id)
+async function deleteTodo(t, { id }) {
   await t.none(
     `UPDATE todos
-     SET (deleted, version) =
-     (true, $2)
+     SET deleted = true, version = gen_random_uuid()
      WHERE id = $1
      `,
-    [id, version],
+    [id],
   )
 }
 
