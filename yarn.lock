@@ -41,9 +41,9 @@ abbrev@1:
   integrity sha512-nne9/IiQ/hzIhY6pdDnbBtz7DjPTKrY00P/zvPSm5pOFkl6xuGrGnXn/VtTNNfNtAfZ9/1RtehkszU9qcTii0Q==
 
 ably@^1.2.11:
-  version "1.2.11"
-  resolved "https://registry.yarnpkg.com/ably/-/ably-1.2.11.tgz#655ebaac4a155e38c8a5cf665ce60fff5a179e2b"
-  integrity sha512-lKWYDfSSlmss0kXMw7FZb3lsCBvm4AZO5K0KXGyt6JY4ga0I5W16Hz/x5UDPwVM05Y3KC6BcWIFwUqIbMXjtcQ==
+  version "1.2.13"
+  resolved "https://registry.yarnpkg.com/ably/-/ably-1.2.13.tgz#b94cd8ff0b30f01794308382a278804b27fcd4db"
+  integrity sha512-oYTRhjspzTh/LdqYr3JJTofNPyZgyUVUCt1Do653dx7SwK9kxOJe+P6jqcmosR/cQJVRrCxE76yy+PUA80ZudA==
   dependencies:
     "@ably/msgpack-js" "^0.3.3"
     request "^2.87.0"
