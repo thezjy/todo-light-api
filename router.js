@@ -128,7 +128,8 @@ router.post('/replicache-push', async (req, res) => {
         console.log('Processed mutation in', Date.now() - t1)
       }
 
-      await sendPoke(groupID)
+      const channel = ably.channels.get(`todos-of-${groupID}`)
+      channel.publish('change', {})
 
       console.log(
         'setting',
@@ -205,8 +206,4 @@ async function deleteTodo(t, { id }) {
      `,
     [id],
   )
-}
-
-async function sendPoke(groupID) {
-  todoChannel.publish(groupID, {})
 }
