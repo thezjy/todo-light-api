@@ -15,7 +15,7 @@ router.get('/', async (req, res) => {
 
 router.post('/replicache-pull', async (req, res) => {
   const pull = req.body
-  const { group_id: groupID } = req.query
+  const { user_id: userID } = req.query
   console.log(`Processing pull`, JSON.stringify(pull))
   const t0 = Date.now()
 
@@ -30,9 +30,11 @@ router.post('/replicache-pull', async (req, res) => {
         )?.last_mutation_id ?? '0',
       )
 
+      const region = await getRegion(t, userID)
+
       const changed = await t.manyOrNone(
-        'select id, completed, content, ord, deleted, version from todos where group_id = $1',
-        [groupID],
+        'select id, completed, content, ord, deleted, version from todos where crdb_region = $1 and user_id = $2',
+        [region, userID],
       )
 
       const patch = []
@@ -81,14 +83,16 @@ router.post('/replicache-pull', async (req, res) => {
 })
 
 router.post('/replicache-push', async (req, res) => {
-  const { group_id: groupID } = req.query
+  const { user_id: userID } = req.query
   const push = req.body
   console.log('Processing push', JSON.stringify(push))
   const t0 = Date.now()
 
   try {
     await db.tx(async (t) => {
-      let lastMutationID = await getLastMutationID(t, push.clientID)
+      const region = await getRegion(t, userID)
+
+      let lastMutationID = await getLastMutationID(t, push.clientID, region)
 
       for (const mutation of push.mutations) {
         const t1 = Date.now()
@@ -110,7 +114,7 @@ router.post('/replicache-push', async (req, res) => {
 
         switch (mutation.name) {
           case 'createTodo':
-            await createTodo(t, mutation.args, groupID)
+            await createTodo(t, mutation.args, userID, region)
             break
           case 'updateTodoCompleted':
             await updateTodoCompleted(t, mutation.args)
@@ -128,7 +132,7 @@ router.post('/replicache-push', async (req, res) => {
         console.log('Processed mutation in', Date.now() - t1)
       }
 
-      const channel = ably.channels.get(`todos-of-${groupID}`)
+      const channel = ably.channels.get(`todos-of-${userID}`)
       channel.publish('change', {})
 
       console.log(
@@ -153,7 +157,7 @@ router.post('/replicache-push', async (req, res) => {
   }
 })
 
-async function getLastMutationID(t, clientID) {
+async function getLastMutationID(t, clientID, region) {
   const clientRow = await t.oneOrNone(
     'SELECT last_mutation_id FROM replicache_clients WHERE id = $1',
     clientID,
@@ -163,18 +167,23 @@ async function getLastMutationID(t, clientID) {
   }
   console.log('Creating new client', clientID)
   await t.none(
-    'INSERT INTO replicache_clients (id, last_mutation_id) VALUES ($1, 0)',
-    clientID,
+    'INSERT INTO replicache_clients (id, crdb_region, last_mutation_id) VALUES ($1, $2, 0)',
+    [clientID, region],
   )
   return 0
 }
 
-async function createTodo(t, { id, completed, content, order }, groupID) {
+async function createTodo(
+  t,
+  { id, completed, content, order },
+  userID,
+  region,
+) {
   await t.none(
     `INSERT INTO todos (
-     id, completed, content, ord, group_id) values
-     ($1, $2, $3, $4, $5)`,
-    [id, completed, content, order, groupID],
+     id, completed, content, ord, user_id, crdb_region) values
+     ($1, $2, $3, $4, $5, $6)`,
+    [id, completed, content, order, userID, region],
   )
 }
 
@@ -206,4 +215,26 @@ async function deleteTodo(t, { id }) {
      `,
     [id],
   )
+}
+
+// users, todos and replicache_clients are regional by row tables
+// their crdb_regions are bind to the gateway_region when users are created
+async function getRegion(t, userID) {
+  const user = await t.oneOrNone(
+    'select crdb_region from users where id = $1',
+    [userID],
+  )
+
+  let region
+  if (user != null) {
+    region = user.crdb_region
+  } else {
+    region = (
+      await t.one('insert into users (id) values ($1) returning crdb_region', [
+        userID,
+      ])
+    ).crdb_region
+  }
+
+  return region
 }

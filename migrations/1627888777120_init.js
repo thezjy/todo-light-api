@@ -3,15 +3,25 @@
 exports.shorthands = undefined
 
 exports.up = (pgm) => {
+  pgm.createTable('users', {
+    id: {
+      type: 'varchar(21)',
+      notNull: true,
+      primaryKey: true,
+    },
+  })
+
   pgm.createTable('todos', {
     id: {
       type: 'varchar(21)',
       notNull: true,
       primaryKey: true,
     },
-    group_id: {
+    user_id: {
       type: 'varchar(21)',
       notNull: true,
+      references: '"users"',
+      onDelete: 'cascade',
     },
     content: {
       type: 'string',
@@ -52,5 +62,6 @@ exports.up = (pgm) => {
 
 exports.down = (pgm) => {
   pgm.dropTable('todos')
+  pgm.dropTable('users')
   pgm.dropTable('replicache_clients')
 }
