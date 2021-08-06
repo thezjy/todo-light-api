@@ -56,6 +56,7 @@ function downloadCockroachCert(start) {
       },
     )
   } else {
+    console.group('cockroach cert already exists')
     start()
   }
 }
