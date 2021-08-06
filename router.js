@@ -21,16 +21,16 @@ router.post('/replicache-pull', async (req, res) => {
 
   try {
     await db.tx(async (t) => {
+      const region = await getRegion(t, userID)
+
       const lastMutationID = parseInt(
         (
           await t.oneOrNone(
-            'select last_mutation_id from replicache_clients where id = $1',
-            pull.clientID,
+            'select last_mutation_id from replicache_clients where crdb_region = $1 and id = $2',
+            [region, pull.clientID],
           )
         )?.last_mutation_id ?? '0',
       )
-
-      const region = await getRegion(t, userID)
 
       const changed = await t.manyOrNone(
         'select id, completed, content, ord, deleted, version from todos where crdb_region = $1 and user_id = $2',
@@ -143,8 +143,8 @@ router.post('/replicache-push', async (req, res) => {
       )
 
       await t.none(
-        'UPDATE replicache_clients SET last_mutation_id = $2 WHERE id = $1',
-        [push.clientID, lastMutationID],
+        'UPDATE replicache_clients SET last_mutation_id = $1 WHERE crdb_region = $2 and id = $3',
+        [lastMutationID, region, push.clientID],
       )
 
       res.send('{}')
@@ -159,8 +159,8 @@ router.post('/replicache-push', async (req, res) => {
 
 async function getLastMutationID(t, clientID, region) {
   const clientRow = await t.oneOrNone(
-    'SELECT last_mutation_id FROM replicache_clients WHERE id = $1',
-    clientID,
+    'SELECT last_mutation_id FROM replicache_clients WHERE crdb_region = $1 and id = $2',
+    [region, clientID],
   )
   if (clientRow) {
     return parseInt(clientRow.last_mutation_id)
