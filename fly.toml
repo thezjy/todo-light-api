@@ -1,6 +1,6 @@
-# fly.toml file generated for damp-fire-554 on 2021-08-06T01:17:06+08:00
+# fly.toml file generated for hidden-sun-6232 on 2021-08-09T09:24:10+08:00
 
-app = "damp-fire-554"
+app = "hidden-sun-6232"
 
 kill_signal = "SIGINT"
 kill_timeout = 5
