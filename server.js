@@ -7,6 +7,7 @@ const fs = require('fs')
 const morgan = require('morgan')
 const https = require('https')
 
+const rateLimit = require('express-rate-limit')
 const router = require('./router')
 
 const COCKROACH_CERT_PATH = '/data/close-bison-ca.crt'
@@ -24,6 +25,15 @@ function start() {
 
   const app = express()
 
+  const limiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 1000,
+    onLimitReached() {
+      console.error('rate limit reached')
+    },
+  })
+
+  app.use(limiter)
   app.use(morgan(isProduction ? 'combined' : 'dev'))
   app.use(express.json())
   app.use(express.urlencoded())

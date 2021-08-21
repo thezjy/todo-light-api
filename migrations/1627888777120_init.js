@@ -1,24 +1,30 @@
 exports.shorthands = undefined
 
 exports.up = (pgm) => {
-  pgm.createTable('users', {
+  pgm.createTable('todo_lists', {
     id: {
-      type: 'varchar(21)',
+      type: 'uuid',
       notNull: true,
       primaryKey: true,
+      default: pgm.func('gen_random_uuid()'),
     },
   })
 
   pgm.createTable('todos', {
     id: {
-      type: 'varchar(21)',
+      type: 'uuid',
       notNull: true,
       primaryKey: true,
+      default: pgm.func('gen_random_uuid()'),
     },
-    user_id: {
+    client_side_id: {
       type: 'varchar(21)',
       notNull: true,
-      references: '"users"',
+    },
+    list_id: {
+      type: 'uuid',
+      notNull: true,
+      references: 'todo_lists',
       onDelete: 'cascade',
     },
     content: {
@@ -60,6 +66,6 @@ exports.up = (pgm) => {
 
 exports.down = (pgm) => {
   pgm.dropTable('todos')
-  pgm.dropTable('users')
+  pgm.dropTable('todo_lists')
   pgm.dropTable('replicache_clients')
 }

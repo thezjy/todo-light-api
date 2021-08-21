@@ -1,7 +1,6 @@
 const Router = require('express-promise-router')
 const Ably = require('ably')
 const ably = new Ably.Realtime(process.env.ABLY_AKY_KEY)
-const todoChannel = ably.channels.get('todo-change')
 
 const { db } = require('./db')
 
@@ -10,31 +9,66 @@ const router = new Router()
 module.exports = router
 
 router.get('/', async (req, res) => {
-  res.json({ ok: true })
+  let result
+  if (isProduction) {
+    const { FLY_APP_NAME: appName, FLY_REGION: runningRegion } = process.env
+    const edgeNodeRegion = req.get('Fly-Region')
+
+    result = { env: 'prod', appName, runningRegion, edgeNodeRegion }
+  } else {
+    result = { env: 'dev' }
+  }
+
+  res.json(result)
+})
+
+router.post('/create-list-id', async (req, res) => {
+  const { list_id: listID } = req.query
+
+  try {
+    await db.tx(async (t) => {
+      let list
+
+      if (listID == null) {
+        list = await t.oneOrNone('select id from todo_lists where id = $1', [
+          listID,
+        ])
+      }
+
+      if (list == null) {
+        list = await t.one('insert into todo_lists default values returning id')
+      }
+
+      res.json({
+        listID: list.id,
+      })
+    })
+  } catch (e) {
+    console.error(e)
+    res.status(500).send(e.toString())
+  }
 })
 
 router.post('/replicache-pull', async (req, res) => {
   const pull = req.body
-  const { user_id: userID } = req.query
-  console.log(`Processing pull`, JSON.stringify(pull))
-  const t0 = Date.now()
+  const { list_id: listID } = req.query
 
   try {
     await db.tx(async (t) => {
-      const region = await getRegion(t, userID)
+      const region = await getRegion(t, listID)
 
       const lastMutationID = parseInt(
         (
           await t.oneOrNone(
-            'select last_mutation_id from replicache_clients where crdb_region = $1 and id = $2',
-            [region, pull.clientID],
+            'select last_mutation_id from replicache_clients where id = $1',
+            [pull.clientID],
           )
         )?.last_mutation_id ?? '0',
       )
 
       const changed = await t.manyOrNone(
-        'select id, completed, content, ord, deleted, version from todos where crdb_region = $1 and user_id = $2',
-        [region, userID],
+        'select id, completed, content, ord, deleted, version, client_side_id from todos where crdb_region = $1 and list_id = $2',
+        [region, listID],
       )
 
       const patch = []
@@ -45,31 +79,34 @@ router.post('/replicache-pull', async (req, res) => {
         patch.push({ op: 'clear' })
       }
 
-      changed.forEach(({ id, completed, content, ord, version, deleted }) => {
-        cookie[id] = version
+      changed.forEach(
+        ({ id, completed, content, ord, version, deleted, client_side_id }) => {
+          cookie[id] = version
 
-        const key = `todo/${id}`
+          const key = `todo/${client_side_id}`
 
-        if (pull.cookie == null || pull.cookie[id] !== version) {
-          if (deleted) {
-            patch.push({
-              op: 'del',
-              key,
-            })
-          } else {
-            patch.push({
-              op: 'put',
-              key,
-              value: {
-                id,
-                completed,
-                content,
-                order: ord,
-              },
-            })
+          if (pull.cookie == null || pull.cookie[id] !== version) {
+            if (deleted) {
+              patch.push({
+                op: 'del',
+                key,
+              })
+            } else {
+              patch.push({
+                op: 'put',
+                key,
+                value: {
+                  id,
+                  completed,
+                  content,
+                  clientSideID: client_side_id,
+                  order: ord,
+                },
+              })
+            }
           }
-        }
-      })
+        },
+      )
 
       res.json({ lastMutationID, cookie, patch })
       res.end()
@@ -77,25 +114,20 @@ router.post('/replicache-pull', async (req, res) => {
   } catch (e) {
     console.error(e)
     res.status(500).send(e.toString())
-  } finally {
-    console.log('Processed pull in', Date.now() - t0)
   }
 })
 
 router.post('/replicache-push', async (req, res) => {
-  const { user_id: userID } = req.query
+  const { list_id: listID } = req.query
   const push = req.body
-  console.log('Processing push', JSON.stringify(push))
-  const t0 = Date.now()
 
   try {
     await db.tx(async (t) => {
-      const region = await getRegion(t, userID)
+      const region = await getRegion(t, listID)
 
-      let lastMutationID = await getLastMutationID(t, push.clientID, region)
+      let lastMutationID = await getLastMutationID(t, push.clientID)
 
       for (const mutation of push.mutations) {
-        const t1 = Date.now()
         const expectedMutationID = lastMutationID + 1
 
         if (mutation.id < expectedMutationID) {
@@ -110,11 +142,9 @@ router.post('/replicache-push', async (req, res) => {
           break
         }
 
-        console.log('Processing mutation:', JSON.stringify(mutation))
-
         switch (mutation.name) {
           case 'createTodo':
-            await createTodo(t, mutation.args, userID, region)
+            await createTodo(t, mutation.args, listID, region)
             break
           case 'updateTodoCompleted':
             await updateTodoCompleted(t, mutation.args)
@@ -129,18 +159,10 @@ router.post('/replicache-push', async (req, res) => {
             throw new Error(`Unknown mutation: ${mutation.name}`)
         }
         lastMutationID = expectedMutationID
-        console.log('Processed mutation in', Date.now() - t1)
       }
 
-      const channel = ably.channels.get(`todos-of-${userID}`)
+      const channel = ably.channels.get(`todos-of-${listID}`)
       channel.publish('change', {})
-
-      console.log(
-        'setting',
-        push.clientID,
-        'last_mutation_id to',
-        lastMutationID,
-      )
 
       await t.none(
         'UPDATE replicache_clients SET last_mutation_id = $1 WHERE crdb_region = $2 and id = $3',
@@ -152,38 +174,35 @@ router.post('/replicache-push', async (req, res) => {
   } catch (e) {
     console.error(e)
     res.status(500).send(e.toString())
-  } finally {
-    console.log('Processed push in', Date.now() - t0)
   }
 })
 
-async function getLastMutationID(t, clientID, region) {
-  const clientRow = await t.oneOrNone(
-    'SELECT last_mutation_id FROM replicache_clients WHERE crdb_region = $1 and id = $2',
-    [region, clientID],
+async function getLastMutationID(t, clientID) {
+  const client = await t.oneOrNone(
+    'SELECT last_mutation_id FROM replicache_clients WHERE id = $1',
+    [clientID],
   )
-  if (clientRow) {
-    return parseInt(clientRow.last_mutation_id)
+  if (client != null) {
+    return parseInt(client.last_mutation_id)
   }
-  console.log('Creating new client', clientID)
   await t.none(
-    'INSERT INTO replicache_clients (id, crdb_region, last_mutation_id) VALUES ($1, $2, 0)',
-    [clientID, region],
+    'INSERT INTO replicache_clients (id, last_mutation_id) VALUES ($1, 0)',
+    [clientID],
   )
   return 0
 }
 
 async function createTodo(
   t,
-  { id, completed, content, order },
-  userID,
+  { clientSideID, completed, content, order },
+  listID,
   region,
 ) {
   await t.none(
     `INSERT INTO todos (
-     id, completed, content, ord, user_id, crdb_region) values
+     client_side_id, completed, content, ord, list_id, crdb_region) values
      ($1, $2, $3, $4, $5, $6)`,
-    [id, completed, content, order, userID, region],
+    [clientSideID, completed, content, order, listID, region],
   )
 }
 
@@ -217,24 +236,10 @@ async function deleteTodo(t, { id }) {
   )
 }
 
-// users, todos and replicache_clients are regional by row tables
-// their crdb_regions are bind to the gateway_region when users are created
-async function getRegion(t, userID) {
-  const user = await t.oneOrNone(
-    'select crdb_region from users where id = $1',
-    [userID],
-  )
+async function getRegion(t, listID) {
+  const list = await t.one('select crdb_region from todo_lists where id = $1', [
+    listID,
+  ])
 
-  let region
-  if (user != null) {
-    region = user.crdb_region
-  } else {
-    region = (
-      await t.one('insert into users (id) values ($1) returning crdb_region', [
-        userID,
-      ])
-    ).crdb_region
-  }
-
-  return region
+  return list.crdb_region
 }
